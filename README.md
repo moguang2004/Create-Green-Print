@@ -1,25 +1,57 @@
+# Create: Green Print
 
-Installation information
-=======
+Create: Green Print 是一个面向 NeoForge 1.21.1 的 Create 附属模组，为 Create 蓝图增加可扩展的配方图和递归合成功能。
 
-This template repository can be directly cloned to get you started with a new
-mod. Simply create a new repository cloned from this one, by following the
-instructions provided by [GitHub](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template).
+绿图可以把多个配方组织成一棵合成树（代码中保存为可连接的配方图）。当目标配方需要其他绿图节点的产物时，系统会自动搜索并尝试先合成前置材料。
 
-Once you have your clone, simply open the repository in the IDE of your choice. The usual recommendation for an IDE is either IntelliJ IDEA or Eclipse.
+## 主要功能
 
-If at any point you are missing libraries in your IDE, or you've run into problems you can
-run `gradlew --refresh-dependencies` to refresh the local cache. `gradlew clean` to reset everything 
-{this does not affect your code} and then start the process again.
+- 使用 Create 蓝图和绿色染料合成绿图。
+- 每个绿图可以保存多个配方节点，节点坐标不限制在固定的 3x3 范围内。
+- 边缘相邻、方向一致的绿图会连接成同一个配方组件，共享其中的所有配方。
+- 支持 Minecraft 的 `Ingredient` 和标签配方，能够保留一个输入对应多个可选物品的语义。
+- 合成前会检查玩家库存，并递归查找当前连通组件中可以生产缺少材料的配方。
+- 支持配方输出数量、实际配方匹配、工具耐久和容器返还物品等常见合成行为。
+- 搜索失败时不会提交部分消耗；只有完整搜索成功后才会一次性修改库存。
+- 鼠标指向配方节点时，沿用 Create 的材料提示，并区分库存已有、可递归合成和无法获得的材料。
 
-Mapping Names:
-============
-By default, the MDK is configured to use the official mapping names from Mojang for methods and fields 
-in the Minecraft codebase. These names are covered by a specific license. All modders should be aware of this
-license. For the latest license text, refer to the mapping file itself, or the reference copy here:
-https://github.com/NeoForged/NeoForm/blob/main/Mojang.md
+## 使用方式
 
-Additional Resources: 
-==========
-Community Documentation: https://docs.neoforged.net/  
-NeoForged Discord: https://discord.neoforged.net/
+1. 用 Create 蓝图和一个绿色染料合成绿图。
+2. 将绿图放置在墙面或其他可放置面上，右键打开配方编辑界面。
+3. 在不同节点中配置目标配方；相邻节点会组成同一张合成树。
+4. 需要跨绿图共享配方时，将多个绿图边缘相邻放置，并保持安装方向一致。
+5. 直接点击有输出的配方节点即可尝试合成。按住 Shift 点击会连续合成，直到材料不足或达到 64 次。
+
+## 合成树搜索
+
+每次合成会收集当前绿图及其物理相邻绿图中的所有配方，并建立按输出物品索引的候选列表。搜索一个输入时，处理顺序如下：
+
+1. 优先从玩家库存中预留匹配的物品。
+2. 再使用当前搜索分支中已经产生的虚拟产物。
+3. 如果仍然缺少材料，选择能够生产该 `Ingredient` 的绿图配方，递归解析它的输入。
+4. 对多个候选配方进行回溯，直到找到可以满足整个配方网格的分支。
+5. 所有输入和前置配方都成功后，提交一次事务并把最终产物放回玩家背包。
+
+搜索会记录正在解析的配方并限制最大递归深度为 64，用于避免配方循环。配方索引和已发现的配方会短时间缓存，绿图编辑或连接关系变化后会自动失效。
+
+## 开发环境
+
+| 项目 | 版本 |
+| --- | --- |
+| Minecraft | 1.21.1 |
+| NeoForge | 21.1.244 |
+| Create | 6.0.11-295 |
+| Java | 21 |
+
+编译项目：
+
+```powershell
+.\gradlew.bat build
+```
+
+仅编译 Java 源码：
+
+```powershell
+.\gradlew.bat compileJava
+```
