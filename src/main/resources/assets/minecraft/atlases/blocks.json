@@ -1,0 +1,20 @@
+{
+  "sources": [
+    {
+      "type": "single",
+      "resource": "creategreenprint:entity/greenprint_small"
+    },
+    {
+      "type": "single",
+      "resource": "creategreenprint:entity/greenprint_medium"
+    },
+    {
+      "type": "single",
+      "resource": "creategreenprint:entity/greenprint_large"
+    },
+    {
+      "type": "single",
+      "resource": "creategreenprint:entity/greenprint_small_connected"
+    }
+  ]
+}

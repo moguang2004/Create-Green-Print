@@ -1,0 +1,10 @@
+{
+  "itemGroup.creategreenprint": "Create: Green Print",
+  "item.creategreenprint.green_print": "Green Print",
+  "menu.creategreenprint.green_print": "Green Print",
+  "screen.creategreenprint.graph": "Recipe graph",
+  "screen.creategreenprint.recipes": "Create recipes",
+  "screen.creategreenprint.search": "Search recipes",
+  "screen.creategreenprint.search_hint": "recipe id",
+  "screen.creategreenprint.remove": "Remove selected node"
+}

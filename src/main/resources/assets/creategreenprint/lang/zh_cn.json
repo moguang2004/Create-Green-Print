@@ -1,0 +1,10 @@
+{
+  "itemGroup.creategreenprint": "机械动力：绿图",
+  "item.creategreenprint.green_print": "绿图",
+  "menu.creategreenprint.green_print": "绿图",
+  "screen.creategreenprint.graph": "配方图",
+  "screen.creategreenprint.recipes": "机械动力配方",
+  "screen.creategreenprint.search": "搜索配方",
+  "screen.creategreenprint.search_hint": "配方 ID",
+  "screen.creategreenprint.remove": "删除选中节点"
+}
