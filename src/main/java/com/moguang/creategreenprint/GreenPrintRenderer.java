@@ -23,8 +23,12 @@ import java.util.Set;
 
 /** Renders one connected, arbitrarily shaped tile for every Green Print node. */
 public final class GreenPrintRenderer extends EntityRenderer<GreenPrintEntity> {
+    // The connected border model is slightly thicker than Create's base model.
+    private static final float OUTPUT_SURFACE_Z = 0.04f;
+
     public GreenPrintRenderer(EntityRendererProvider.Context context) {
         super(context);
+        shadowRadius = 0;
     }
 
     @Override
@@ -75,8 +79,6 @@ public final class GreenPrintRenderer extends EntityRenderer<GreenPrintEntity> {
         int tileY = mask >> 3;
         SuperByteBuffer connection = CachedBuffers.partial(GreenPrintPartialModels.CONNECTED,
                 Blocks.AIR.defaultBlockState());
-        // The target is an 8x8 sheet of 16x16 variants. The model keeps the
-        // original 16x16 UVs and shiftUVtoSheet selects one target variant.
         connection.shiftUVtoSheet(GreenPrintPartialModels.CONNECTION_SHEET,
                 tileX / 8f, tileY / 8f, 8);
         renderTilePart(entity, entityYaw, x, y, centerX, centerY, connection,
@@ -105,7 +107,7 @@ public final class GreenPrintRenderer extends EntityRenderer<GreenPrintEntity> {
         poseStack.pushPose();
         poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(-entityYaw));
         poseStack.mulPose(com.mojang.math.Axis.XP.rotationDegrees(entity.getXRot()));
-        poseStack.translate(x - centerX + 0.5, y - centerY + 0.5, 0.03225);
+        poseStack.translate(x - centerX + 0.5, y - centerY + 0.5, OUTPUT_SURFACE_Z);
         poseStack.scale(0.5f, 0.5f, 0.0009765625f);
         poseStack.last().normal().set(itemRenderState.normal());
         Minecraft.getInstance().getItemRenderer().renderStatic(

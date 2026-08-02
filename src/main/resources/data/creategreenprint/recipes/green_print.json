@@ -1,11 +1,15 @@
 {
   "type": "minecraft:crafting_shapeless",
   "ingredients": [
-    "create:blueprint",
-    "minecraft:green_dye"
+    {
+      "item": "create:crafting_blueprint"
+    },
+    {
+      "item": "minecraft:green_dye"
+    }
   ],
   "result": {
-    "id": "creategreenprint:green_print",
+    "item": "creategreenprint:green_print",
     "count": 1
   }
 }

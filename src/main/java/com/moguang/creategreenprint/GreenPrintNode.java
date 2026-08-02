@@ -34,7 +34,7 @@ public record GreenPrintNode(ResourceLocation id, int x, int y,
     }
 
     public boolean produces(ItemStack stack) {
-        return ItemStack.isSameItemSameComponents(output, stack);
+        return ItemStack.isSameItemSameTags(output, stack);
     }
 
     public boolean touches(GreenPrintNode other) {

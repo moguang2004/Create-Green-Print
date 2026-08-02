@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.mojang.serialization.JsonOps;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -22,7 +23,7 @@ import net.minecraft.world.item.crafting.Ingredient;
  * bounded: adjacency, rather than a recipe grid size, defines the graph.
  */
 public final class GreenPrintGraph {
-    private static final int DATA_VERSION = 3;
+    private static final int DATA_VERSION = 4;
     private static final String NODES = "Nodes";
     private final List<GreenPrintNode> nodes;
     private final Map<Long, GreenPrintNode> nodesByPosition;
@@ -127,18 +128,14 @@ public final class GreenPrintGraph {
             serialized.putString("Id", node.id().toString());
             serialized.putInt("X", node.x());
             serialized.putInt("Y", node.y());
-            serialized.put("Output", node.output().save(registries));
+            serialized.put("Output", node.output().save(new CompoundTag()));
             ListTag ingredients = new ListTag();
             for (GreenPrintIngredientGroup group : node.ingredientGroups()) {
-                Ingredient.CODEC.encodeStart(NbtOps.INSTANCE, group.ingredient()).result()
-                        .ifPresent(value -> {
-                            // Ingredient codecs can produce either a compound or a list.
-                            // ListTag requires every direct child to share one tag type.
-                            CompoundTag entry = new CompoundTag();
-                            entry.put("Data", value);
-                            entry.putIntArray("Slots", group.slots().stream().mapToInt(Integer::intValue).toArray());
-                            ingredients.add(entry);
-                        });
+                CompoundTag entry = new CompoundTag();
+                Tag value = JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, group.ingredient().toJson());
+                entry.put("Data", value);
+                entry.putIntArray("Slots", group.slots().stream().mapToInt(Integer::intValue).toArray());
+                ingredients.add(entry);
             }
             serialized.put("Ingredients", ingredients);
             serializedNodes.add(serialized);
@@ -159,7 +156,7 @@ public final class GreenPrintGraph {
             if (id == null || !serialized.contains("Output", CompoundTag.TAG_COMPOUND)) {
                 continue;
             }
-            ItemStack output = ItemStack.parseOptional(registries, serialized.getCompound("Output"));
+            ItemStack output = ItemStack.of(serialized.getCompound("Output"));
             if (output.isEmpty()) {
                 continue;
             }
@@ -178,7 +175,9 @@ public final class GreenPrintGraph {
                     encodedIngredient = entry.get("Data");
                 }
                 int[] encodedSlots = slots;
-                Ingredient.CODEC.parse(NbtOps.INSTANCE, encodedIngredient).result().ifPresent(ingredient -> {
+                try {
+                    Ingredient ingredient = Ingredient.fromJson(
+                            NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, encodedIngredient));
                     if (encodedSlots.length == 0) {
                         legacyGrid.add(ingredient);
                     } else {
@@ -192,7 +191,9 @@ public final class GreenPrintGraph {
                             ingredients.add(new GreenPrintIngredientGroup(ingredient, groupSlots));
                         }
                     }
-                });
+                } catch (RuntimeException ignored) {
+                    // Invalid ingredients are skipped so a damaged print does not prevent world loading.
+                }
             }
             if (!legacyGrid.isEmpty()) {
                 ingredients.addAll(GreenPrintIngredientGroup.compact(legacyGrid));

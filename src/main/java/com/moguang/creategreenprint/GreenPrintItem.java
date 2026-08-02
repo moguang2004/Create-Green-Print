@@ -1,6 +1,5 @@
 package com.moguang.creategreenprint;
 
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -42,8 +41,8 @@ public class GreenPrintItem extends BlueprintItem {
     @Override
     public void inventoryTick(ItemStack stack, Level level, Entity entity, int slotId, boolean selected) {
         // Convert pre-change Green Prints into normal stackable blank items.
-        if (!level.isClientSide && stack.has(DataComponents.CUSTOM_DATA)) {
-            stack.remove(DataComponents.CUSTOM_DATA);
+        if (!level.isClientSide && stack.hasTag()) {
+            stack.setTag(null);
         }
     }
 

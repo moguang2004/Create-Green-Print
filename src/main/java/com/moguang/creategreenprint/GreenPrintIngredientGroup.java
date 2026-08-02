@@ -55,7 +55,7 @@ public record GreenPrintIngredientGroup(Ingredient ingredient, List<Integer> slo
         for (ItemStack firstItem : firstItems) {
             boolean found = false;
             for (ItemStack secondItem : secondItems) {
-                if (ItemStack.isSameItemSameComponents(firstItem, secondItem)) {
+                if (ItemStack.isSameItemSameTags(firstItem, secondItem)) {
                     found = true;
                     break;
                 }

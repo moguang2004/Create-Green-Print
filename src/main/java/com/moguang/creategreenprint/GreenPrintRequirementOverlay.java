@@ -1,6 +1,5 @@
 package com.moguang.creategreenprint;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -9,21 +8,37 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import com.simibubi.create.content.equipment.blueprint.BlueprintOverlayRenderer;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.simibubi.create.foundation.gui.AllGuiTextures;
 
-import net.createmod.catnip.data.Pair;
+import net.createmod.catnip.gui.element.GuiGameElement;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.RenderGuiOverlayEvent;
+import net.minecraftforge.client.gui.overlay.ForgeGui;
+import net.minecraftforge.client.gui.overlay.IGuiOverlay;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
 
-/** Supplies Green Print data to Create's own blueprint overlay renderer. */
+/** Renders the Create-style material overlay for Green Print entities. */
+@Mod.EventBusSubscriber(modid = CreateGreenPrint.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE,
+        value = Dist.CLIENT)
 public final class GreenPrintRequirementOverlay {
-    private static final Field INGREDIENTS_FIELD = overlayField("ingredients");
+    private static final ResourceLocation CREATE_BLUEPRINT_OVERLAY =
+            ResourceLocation.fromNamespaceAndPath("create", "blueprint");
     private static final Map<Ingredient, Map<Integer, Boolean>> RECURSIVE_REQUIREMENTS = new IdentityHashMap<>();
     private static final Map<Ingredient, Boolean> PRODUCER_RECIPES = new IdentityHashMap<>();
-    private static final Map<ItemStack, ChatFormatting> MISSING_COUNT_COLORS = new IdentityHashMap<>();
+
+    public static final IGuiOverlay OVERLAY = GreenPrintRequirementOverlay::renderOverlay;
 
     private static UUID cachedEntity;
     private static long cachedAt = Long.MIN_VALUE;
@@ -31,63 +46,101 @@ public final class GreenPrintRequirementOverlay {
     private GreenPrintRequirementOverlay() {
     }
 
-    /** Invoked at the head of Create's BlueprintOverlayRenderer.renderOverlay. */
-    public static void prepareForCreateOverlay() {
+    /** Create still sees GreenPrintEntity as a BlueprintEntity, so suppress its own duplicate HUD. */
+    @SubscribeEvent
+    public static void cancelCreateBlueprintOverlay(RenderGuiOverlayEvent.Pre event) {
+        if (!CREATE_BLUEPRINT_OVERLAY.equals(event.getOverlay().id()) || !isLookingAtGreenPrint()) {
+            return;
+        }
+        event.setCanceled(true);
+    }
+
+    /** Uses Create's original slots, arrow, item renderer and number decorations. */
+    public static void renderOverlay(ForgeGui gui, GuiGraphics graphics, float partialTick,
+                                     int screenWidth, int screenHeight) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.options.hideGui || minecraft.screen != null || minecraft.player == null
-                || !(minecraft.hitResult instanceof EntityHitResult hit)
-                || !(hit.getEntity() instanceof GreenPrintEntity greenPrint)) {
-            clearRenderState();
+                || minecraft.level == null) {
             return;
         }
 
-        if (!greenPrint.hasRecipeAt(hit.getLocation().subtract(greenPrint.position()))) {
-            clearRenderState();
+        Target target = target(minecraft);
+        if (target == null || !target.entity().hasRecipeAt(target.localHit())) {
             return;
         }
 
-        List<Pair<ItemStack, Boolean>> ingredients = overlayIngredients();
-        GreenPrintNode node = greenPrint.recipeNodeAt(hit.getLocation().subtract(greenPrint.position()));
-        if (ingredients == null || ingredients.isEmpty() || node == null) {
-            clearRenderState();
+        GreenPrintNode node = target.entity().recipeNodeAt(target.localHit());
+        if (node == null) {
             return;
         }
 
+        refreshDecisionCache(target.entity(), minecraft.level.getGameTime());
         List<Requirement> requirements = requirementsFor(node, minecraft.player);
         if (requirements.isEmpty()) {
-            clearRenderState();
             return;
         }
 
-        long gameTime = minecraft.level == null ? 0 : minecraft.level.getGameTime();
-        if (!greenPrint.getUUID().equals(cachedEntity) || gameTime - cachedAt >= 10) {
+        boolean resultCraftable = requirements.stream().allMatch(Requirement::directlyAvailable);
+        int width = 21 * requirements.size() + 21 + 30;
+        int x = (screenWidth - width) / 2;
+        int y = screenHeight - 100;
+
+        for (Requirement requirement : requirements) {
+            RenderSystem.enableBlend();
+            (requirement.directlyAvailable() ? AllGuiTextures.HOTSLOT_ACTIVE : AllGuiTextures.HOTSLOT)
+                    .render(graphics, x, y);
+            drawItemStack(graphics, minecraft, x, y, requirement.display().copyWithCount(requirement.count()),
+                    requirement.directlyAvailable() ? null
+                            : missingCountText(target.entity(), minecraft.player, requirement));
+            x += 21;
+        }
+
+        x += 5;
+        RenderSystem.enableBlend();
+        AllGuiTextures.HOTSLOT_ARROW.render(graphics, x, y + 4);
+        x += 25;
+
+        ItemStack output = node.output();
+        if (output.isEmpty()) {
+            AllGuiTextures.HOTSLOT.render(graphics, x, y);
+            GuiGameElement.of(Items.BARRIER).at(x + 3, y + 3).render(graphics);
+        } else {
+            AllGuiTextures resultSlot = resultCraftable ? AllGuiTextures.HOTSLOT_SUPER_ACTIVE : AllGuiTextures.HOTSLOT;
+            resultSlot.render(graphics, resultCraftable ? x - 1 : x, resultCraftable ? y - 1 : y);
+            drawItemStack(graphics, minecraft, x, y, output, null);
+        }
+        RenderSystem.disableBlend();
+    }
+
+    private static boolean isLookingAtGreenPrint() {
+        return target(Minecraft.getInstance()) != null;
+    }
+
+    private static Target target(Minecraft minecraft) {
+        if (!(minecraft.hitResult instanceof EntityHitResult hit)
+                || !(hit.getEntity() instanceof GreenPrintEntity greenPrint)) {
+            return null;
+        }
+        return new Target(greenPrint, hit.getLocation().subtract(greenPrint.position()));
+    }
+
+    private static void refreshDecisionCache(GreenPrintEntity greenPrint, long gameTime) {
+        if (cachedEntity == null || !greenPrint.getUUID().equals(cachedEntity) || gameTime - cachedAt >= 10) {
             RECURSIVE_REQUIREMENTS.clear();
             PRODUCER_RECIPES.clear();
             cachedEntity = greenPrint.getUUID();
             cachedAt = gameTime;
         }
-
-        MISSING_COUNT_COLORS.clear();
-        replaceOverlayIngredients(ingredients);
-        for (Requirement requirement : requirements) {
-            ChatFormatting color = missingCountColor(greenPrint, minecraft.player, requirement);
-            ItemStack displayed = requirement.display().copyWithCount(requirement.count());
-            ingredients.add(Pair.of(displayed, requirement.directlyAvailable()));
-            if (color != null) {
-                MISSING_COUNT_COLORS.put(displayed, color);
-            }
-        }
     }
 
-    private static ChatFormatting missingCountColor(GreenPrintEntity greenPrint,
-                                                    net.minecraft.world.entity.player.Player player,
-                                                    Requirement requirement) {
-        if (requirement.directlyAvailable()) {
-            return null;
-        }
+    private static String missingCountText(GreenPrintEntity greenPrint, Player player, Requirement requirement) {
+        ChatFormatting color = missingCountColor(greenPrint, player, requirement);
+        return color + Integer.toString(requirement.count());
+    }
 
-        boolean hasRecipe = PRODUCER_RECIPES.computeIfAbsent(requirement.ingredient(),
-                greenPrint::hasCraftingRecipe);
+    private static ChatFormatting missingCountColor(GreenPrintEntity greenPrint, Player player,
+                                                    Requirement requirement) {
+        boolean hasRecipe = PRODUCER_RECIPES.computeIfAbsent(requirement.ingredient(), greenPrint::hasCraftingRecipe);
         if (!hasRecipe) {
             return ChatFormatting.RED;
         }
@@ -99,18 +152,8 @@ public final class GreenPrintRequirementOverlay {
         return recursivelyAvailable ? ChatFormatting.AQUA : ChatFormatting.GOLD;
     }
 
-    /** Replaces only Create's count argument; all GUI drawing stays in Create's drawItemStack method. */
-    public static String countText(ItemStack itemStack, String original) {
-        ChatFormatting color = MISSING_COUNT_COLORS.get(itemStack);
-        return color == null ? original : color + Integer.toString(itemStack.getCount());
-    }
-
-    /**
-     * Create's overlay only sees the representative stack stored in a BlueprintSection.
-     * Green Print keeps the real Ingredient, so allocate a copy of the inventory against
-     * those ingredients to preserve tag alternatives and avoid counting one stack twice.
-     */
-    private static List<Requirement> requirementsFor(GreenPrintNode node, net.minecraft.world.entity.player.Player player) {
+    /** Allocates inventory copies so tag alternatives and repeated ingredients are counted correctly. */
+    private static List<Requirement> requirementsFor(GreenPrintNode node, Player player) {
         List<GreenPrintIngredientGroup> groups = node.ingredientGroups();
         List<ItemStack> available = new ArrayList<>(player.getInventory().getContainerSize());
         for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
@@ -143,13 +186,13 @@ public final class GreenPrintRequirementOverlay {
         List<Requirement> requirements = new ArrayList<>(groups.size());
         for (int index = 0; index < groups.size(); index++) {
             GreenPrintIngredientGroup group = groups.get(index);
-            requirements.add(new Requirement(group.ingredient(), displayStack(group.ingredient(), player), group.count(),
-                    directlyAvailable[index]));
+            requirements.add(new Requirement(group.ingredient(), displayStack(group.ingredient(), player),
+                    group.count(), directlyAvailable[index]));
         }
         return requirements;
     }
 
-    private static ItemStack displayStack(Ingredient ingredient, net.minecraft.world.entity.player.Player player) {
+    private static ItemStack displayStack(Ingredient ingredient, Player player) {
         for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
             if (!stack.isEmpty() && ingredient.test(stack)) {
@@ -160,38 +203,13 @@ public final class GreenPrintRequirementOverlay {
         return choices.length == 0 ? ItemStack.EMPTY : choices[0].copyWithCount(1);
     }
 
-    private static void replaceOverlayIngredients(List<Pair<ItemStack, Boolean>> ingredients) {
-        ingredients.clear();
+    private static void drawItemStack(GuiGraphics graphics, Minecraft minecraft, int x, int y,
+                                      ItemStack itemStack, String count) {
+        GuiGameElement.of(itemStack).at(x + 3, y + 3).render(graphics);
+        graphics.renderItemDecorations(minecraft.font, itemStack, x + 3, y + 3, count);
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<Pair<ItemStack, Boolean>> overlayIngredients() {
-        if (INGREDIENTS_FIELD == null) {
-            return null;
-        }
-        try {
-            return (List<Pair<ItemStack, Boolean>>) INGREDIENTS_FIELD.get(null);
-        } catch (IllegalAccessException ignored) {
-            return null;
-        }
-    }
-
-    private static void clearRenderState() {
-        RECURSIVE_REQUIREMENTS.clear();
-        PRODUCER_RECIPES.clear();
-        MISSING_COUNT_COLORS.clear();
-        cachedEntity = null;
-        cachedAt = Long.MIN_VALUE;
-    }
-
-    private static Field overlayField(String name) {
-        try {
-            Field field = BlueprintOverlayRenderer.class.getDeclaredField(name);
-            field.setAccessible(true);
-            return field;
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
+    private record Target(GreenPrintEntity entity, Vec3 localHit) {
     }
 
     private record Requirement(Ingredient ingredient, ItemStack display, int count, boolean directlyAvailable) {

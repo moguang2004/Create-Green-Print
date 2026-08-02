@@ -1,6 +1,6 @@
 # Create: Green Print
 
-Create: Green Print 是一个面向 NeoForge 1.21.1 的 Create 附属模组，为 Create 蓝图增加可扩展的配方图和递归合成功能。
+Create: Green Print 是一个面向 Create 的附属模组，目前主要支持 Minecraft 1.20.1（Forge）和 1.21.1（NeoForge），为 Create 蓝图增加可扩展的配方图和递归合成功能。
 
 绿图可以把多个配方组织成一棵合成树（代码中保存为可连接的配方图）。当目标配方需要其他绿图节点的产物时，系统会自动搜索并尝试先合成前置材料。
 
@@ -35,14 +35,21 @@ Create: Green Print 是一个面向 NeoForge 1.21.1 的 Create 附属模组，�
 
 搜索会记录正在解析的配方并限制最大递归深度为 64，用于避免配方循环。配方索引和已发现的配方会短时间缓存，绿图编辑或连接关系变化后会自动失效。
 
+## 支持的版本
+
+| Minecraft | 加载器 | Create |
+| --- | --- | --- |
+| 1.20.1 | Forge 47.4.10 | 6.0.8-291 |
+| 1.21.1 | NeoForge 21.1.244 | 6.0.11-295 |
+
 ## 开发环境
 
 | 项目 | 版本 |
 | --- | --- |
-| Minecraft | 1.21.1 |
-| NeoForge | 21.1.244 |
-| Create | 6.0.11-295 |
-| Java | 21 |
+| Minecraft | 1.20.1 |
+| Forge | 47.4.10 |
+| Create | 6.0.8-291 |
+| Java | 17 |
 
 编译项目：
 

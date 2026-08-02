@@ -14,10 +14,12 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.CraftingContainer;
+import net.minecraft.world.inventory.TransientCraftingContainer;
 import net.minecraft.world.level.Level;
 
 /** Handles recursive crafting and the short-lived recipe index for a connected component. */
@@ -28,6 +30,17 @@ final class GreenPrintCraftingService {
     private final GreenPrintEntity owner;
     private RecipeSearchIndex cachedRecipeIndex;
     private long cachedRecipeIndexAt = Long.MIN_VALUE;
+    private static final AbstractContainerMenu DUMMY_MENU = new AbstractContainerMenu(null, -1) {
+        @Override
+        public ItemStack quickMoveStack(Player player, int slot) {
+            return ItemStack.EMPTY;
+        }
+
+        @Override
+        public boolean stillValid(Player player) {
+            return false;
+        }
+    };
 
     GreenPrintCraftingService(GreenPrintEntity owner) {
         this.owner = owner;
@@ -257,7 +270,7 @@ final class GreenPrintCraftingService {
                                                  CraftTransaction transaction, RecipeSearchIndex recipes,
                                                  Set<Integer> nonConsumingSlots) {
         GreenPrintNode node = recipeRef.node();
-        CraftingInput input = toCraftingInput(consumedInputs, transaction);
+        CraftingContainer input = toCraftingContainer(consumedInputs, transaction);
         if (input != null) {
             CraftingRecipe recipe = matchingCraftingRecipe(node, input, recipes);
             if (recipe != null) {
@@ -311,13 +324,14 @@ final class GreenPrintCraftingService {
         if (sampleGrid == null) {
             return recipes.cacheNonConsumingSlots(recipeRef, Set.of());
         }
-        CraftingRecipe recipe = matchingCraftingRecipe(recipeRef.node(), CraftingInput.of(3, 3, sampleGrid), recipes);
+        CraftingContainer input = craftingContainer(sampleGrid);
+        CraftingRecipe recipe = matchingCraftingRecipe(recipeRef.node(), input, recipes);
         if (recipe == null) {
             return recipes.cacheNonConsumingSlots(recipeRef, Set.of());
         }
 
         Set<Integer> slots = new HashSet<>();
-        List<ItemStack> remainders = recipe.getRemainingItems(CraftingInput.of(3, 3, sampleGrid));
+        List<ItemStack> remainders = recipe.getRemainingItems(input);
         List<Ingredient> ingredientGrid = recipes.ingredientGrid(recipeRef.node());
         for (int slot = 0; slot < ingredientGrid.size() && slot < remainders.size(); slot++) {
             ItemStack supplied = sampleGrid.get(slot);
@@ -353,7 +367,7 @@ final class GreenPrintCraftingService {
         return grid;
     }
 
-    private CraftingRecipe matchingCraftingRecipe(GreenPrintNode node, CraftingInput input,
+    private CraftingRecipe matchingCraftingRecipe(GreenPrintNode node, CraftingContainer input,
                                                   RecipeSearchIndex recipes) {
         CraftingRecipe storedRecipe = recipes.storedRecipe(owner.level(), node.id());
         if (matchesNodeOutput(storedRecipe, node, input)) {
@@ -366,7 +380,6 @@ final class GreenPrintCraftingService {
         }
         CraftingRecipe discoveredRecipe = owner.level().getRecipeManager()
                 .getRecipeFor(RecipeType.CRAFTING, input, owner.level())
-                .map(holder -> holder.value())
                 .orElse(null);
         if (!matchesNodeOutput(discoveredRecipe, node, input)) {
             return null;
@@ -375,17 +388,17 @@ final class GreenPrintCraftingService {
         return discoveredRecipe;
     }
 
-    private boolean matchesNodeOutput(CraftingRecipe recipe, GreenPrintNode node, CraftingInput input) {
+    private boolean matchesNodeOutput(CraftingRecipe recipe, GreenPrintNode node, CraftingContainer input) {
         if (recipe == null || !recipe.matches(input, owner.level())) {
             return false;
         }
         ItemStack result = recipe.assemble(input, owner.level().registryAccess());
-        return ItemStack.isSameItemSameComponents(result, node.output())
+        return ItemStack.isSameItemSameTags(result, node.output())
                 && result.getCount() == node.output().getCount();
     }
 
-    private static CraftingInput toCraftingInput(List<ConsumedInput> consumedInputs,
-                                                 CraftTransaction transaction) {
+    private static CraftingContainer toCraftingContainer(List<ConsumedInput> consumedInputs,
+                                                         CraftTransaction transaction) {
         List<ItemStack> grid = new ArrayList<>(List.of(
                 ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY,
                 ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY,
@@ -397,7 +410,15 @@ final class GreenPrintCraftingService {
             }
             grid.set(slot, transaction.currentReusableInput(consumedInput).copyWithCount(1));
         }
-        return CraftingInput.of(3, 3, grid);
+        return craftingContainer(grid);
+    }
+
+    private static CraftingContainer craftingContainer(List<ItemStack> grid) {
+        TransientCraftingContainer container = new TransientCraftingContainer(DUMMY_MENU, 3, 3);
+        for (int slot = 0; slot < 9; slot++) {
+            container.setItem(slot, grid.get(slot).copy());
+        }
+        return container;
     }
 
     private static List<ConsumedInput> appendConsumedInputs(List<ConsumedInput> consumedInputs,
@@ -490,8 +511,7 @@ final class GreenPrintCraftingService {
             if (cached != null) {
                 return cached;
             }
-            CraftingRecipe loaded = level.getRecipeManager().byKey(id)
-                    .map(holder -> holder.value())
+        CraftingRecipe loaded = level.getRecipeManager().byKey(id)
                     .filter(CraftingRecipe.class::isInstance)
                     .map(CraftingRecipe.class::cast)
                     .orElse(null);
@@ -664,7 +684,7 @@ final class GreenPrintCraftingService {
                 ItemStack current = player.getInventory().getItem(slot);
                 if (current.isEmpty()) {
                     player.getInventory().setItem(slot, remainder);
-                } else if (ItemStack.isSameItemSameComponents(current, remainder)
+                } else if (ItemStack.isSameItemSameTags(current, remainder)
                         && current.getCount() + remainder.getCount() <= current.getMaxStackSize()) {
                     current.grow(remainder.getCount());
                 } else {
@@ -683,7 +703,7 @@ final class GreenPrintCraftingService {
                 }
                 if (reusable.isEmpty()) {
                     current.shrink(1);
-                } else if (!ItemStack.isSameItemSameComponents(current, reusable)) {
+                } else if (!ItemStack.isSameItemSameTags(current, reusable)) {
                     ItemStack untouched = current.copy();
                     untouched.shrink(1);
                     player.getInventory().setItem(slot, reusable.copy());

@@ -13,10 +13,9 @@ import com.simibubi.create.AllItems;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -29,7 +28,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.ShapedRecipe;
 import net.minecraft.world.level.Level;
@@ -39,9 +37,11 @@ import net.minecraft.world.phys.Vec3;
 
 import com.simibubi.create.content.equipment.blueprint.BlueprintEntity;
 import com.simibubi.create.content.logistics.filter.FilterItemStack;
-import net.neoforged.neoforge.items.ItemStackHandler;
+import net.minecraftforge.items.ItemStackHandler;
+import net.minecraftforge.network.NetworkHooks;
 import net.createmod.catnip.math.VecHelper;
 import net.minecraft.util.Mth;
+import net.minecraft.server.level.ServerPlayer;
 
 /** A wall-mounted Create-style editor host with an unbounded Green Print graph. */
 public class GreenPrintEntity extends BlueprintEntity {
@@ -88,7 +88,7 @@ public class GreenPrintEntity extends BlueprintEntity {
     }
 
     @Override
-    public void readSpawnData(RegistryFriendlyByteBuf buffer) {
+    public void readSpawnData(FriendlyByteBuf buffer) {
         super.readSpawnData(buffer);
         invalidateGraphCaches();
     }
@@ -98,19 +98,6 @@ public class GreenPrintEntity extends BlueprintEntity {
         super.onPersistentDataUpdated();
         invalidateGraphCaches();
         invalidateConnectedRecipeCaches();
-    }
-
-    @Override
-    public void onAddedToLevel() {
-        super.onAddedToLevel();
-        invalidateGraphCaches();
-        invalidateConnectedRecipeCaches();
-    }
-
-    @Override
-    public void onRemovedFromLevel() {
-        invalidateConnectedRecipeCaches();
-        super.onRemovedFromLevel();
     }
 
     public GreenPrintGraph graph() {
@@ -209,7 +196,7 @@ public class GreenPrintEntity extends BlueprintEntity {
                 CompoundTag item = serializedItems.getCompound(itemIndex);
                 int slot = item.getByte("Slot") & 0xff;
                 if (slot < slots.length) {
-                    slots[slot] = ItemStack.parseOptional(level().registryAccess(), item);
+                    slots[slot] = ItemStack.of(item);
                 }
             }
 
@@ -296,7 +283,7 @@ public class GreenPrintEntity extends BlueprintEntity {
                 }
             }
             items.setStackInSlot(9, node.output().copy());
-            recipes.put(Integer.toString(index), items.serializeNBT(registries));
+            recipes.put(Integer.toString(index), items.serializeNBT());
         }
     }
 
@@ -359,7 +346,7 @@ public class GreenPrintEntity extends BlueprintEntity {
             CompoundTag item = serializedItems.getCompound(i);
             int slot = item.getByte("Slot") & 0xff;
             if (slot < slots.length) {
-                slots[slot] = ItemStack.parseOptional(registries, item);
+                slots[slot] = ItemStack.of(item);
             }
         }
 
@@ -428,11 +415,10 @@ public class GreenPrintEntity extends BlueprintEntity {
         List<ItemStack> currentGrid = representativeInputGrid(current);
         List<Ingredient> best = null;
         int bestTagSlots = 0;
-        for (RecipeHolder<CraftingRecipe> holder : level().getRecipeManager()
+        for (CraftingRecipe recipe : level().getRecipeManager()
                 .getAllRecipesFor(RecipeType.CRAFTING)) {
-            CraftingRecipe recipe = holder.value();
             ItemStack result = recipe.getResultItem(level().registryAccess());
-            if (!ItemStack.isSameItemSameComponents(result, output) || result.getCount() != output.getCount()) {
+            if (!ItemStack.isSameItemSameTags(result, output) || result.getCount() != output.getCount()) {
                 continue;
             }
             List<Ingredient> recipeGrid = recipeIngredientGrid(recipe);
@@ -516,10 +502,9 @@ public class GreenPrintEntity extends BlueprintEntity {
             return null;
         }
 
-        for (RecipeHolder<CraftingRecipe> holder : level().getRecipeManager().getAllRecipesFor(RecipeType.CRAFTING)) {
-            CraftingRecipe recipe = holder.value();
-            ItemStack result = recipe.getResultItem(registries);
-            if (!ItemStack.isSameItemSameComponents(result, output) || result.getCount() != output.getCount()) {
+        for (CraftingRecipe recipe : level().getRecipeManager().getAllRecipesFor(RecipeType.CRAFTING)) {
+            ItemStack result = recipe.getResultItem(level().registryAccess());
+            if (!ItemStack.isSameItemSameTags(result, output) || result.getCount() != output.getCount()) {
                 continue;
             }
 
@@ -707,10 +692,12 @@ public class GreenPrintEntity extends BlueprintEntity {
         if (!level().isClientSide) {
             int menuSectionIndex = sectionIndex;
             MenuProvider section = (MenuProvider) (Object) getSection(sectionIndex);
-            player.openMenu(section, (RegistryFriendlyByteBuf buffer) -> {
+            if (player instanceof ServerPlayer serverPlayer) {
+                NetworkHooks.openScreen(serverPlayer, section, buffer -> {
                 buffer.writeVarInt(getId());
                 buffer.writeVarInt(menuSectionIndex);
-            });
+                });
+            }
         }
         return InteractionResult.sidedSuccess(level().isClientSide());
     }
@@ -728,7 +715,7 @@ public class GreenPrintEntity extends BlueprintEntity {
     }
 
     private static boolean isCreateWrench(ItemStack stack) {
-        return stack.is(AllItems.WRENCH.get());
+        return AllItems.WRENCH.isIn(stack);
     }
 
     private GreenPrintNode nodeAtSection(GreenPrintGraph graph, int sectionIndex) {

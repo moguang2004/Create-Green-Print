@@ -5,9 +5,8 @@ import net.createmod.catnip.render.SpriteShiftEntry;
 import net.createmod.catnip.render.SpriteShifter;
 import net.minecraft.resources.ResourceLocation;
 
-/** Partial models matching Create's three crafting blueprint sizes. */
+/** Partial models for the Green Print base and its connected border layer. */
 public final class GreenPrintPartialModels {
-    /** Create's omnidirectional connection atlas is an 8x8 sheet. */
     public static final PartialModel BASE = model("entity/crafting_greenprint_base");
     public static final PartialModel CONNECTED = model("entity/crafting_greenprint_connected");
     public static final PartialModel SMALL = model("entity/crafting_greenprint_small");
