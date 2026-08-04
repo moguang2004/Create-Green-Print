@@ -29,6 +29,20 @@ repositories {
         name = 'Tterrag'
         url = 'https://maven.tterrag.com'
     }
+    maven {
+        name = 'GTCEu Maven'
+        url = 'https://maven.gtceu.com'
+        content {
+            includeGroup 'com.gregtechceu.gtceu'
+        }
+    }
+    maven {
+        name = "Jared's Maven"
+        url = 'https://maven.blamejared.com'
+        content {
+            includeGroup 'mezz.jei'
+        }
+    }
 }
 
 minecraft {
@@ -75,9 +89,16 @@ dependencies {
     })
     implementation fg.deobf("dev.engine-room.flywheel:flywheel-forge-${minecraft_version}:${flywheel_version}")
     implementation fg.deobf("net.createmod.ponder:Ponder-Forge-${minecraft_version}:${ponder_version}")
-    implementation fg.deobf("com.tterrag.registrate:Registrate:${registrate_version}")
+    // GTCEu bundles this exact Registrate version in its development runtime.
+    // Keep the API available for compilation without adding a second module.
+    compileOnly fg.deobf("com.tterrag.registrate:Registrate:${registrate_version}")
     // Create 6.0.8 uses MixinExtras internally; Green Print itself has no Mixins.
     implementation "io.github.llamalad7:mixinextras-forge:${mixinextras_version}"
+
+    // Development-only recipe inspection. These mods are available to runClient/runServer
+    // through runtimeOnly and are not included in the published Green Print jar.
+    runtimeOnly fg.deobf("mezz.jei:jei-${minecraft_version}-forge:${jei_version}")
+    runtimeOnly fg.deobf("com.gregtechceu.gtceu:gtceu-${minecraft_version}:${gtceu_version}")
 }
 
 tasks.withType(JavaCompile).configureEach {
