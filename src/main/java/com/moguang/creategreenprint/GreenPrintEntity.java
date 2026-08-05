@@ -773,6 +773,10 @@ public class GreenPrintEntity extends BlueprintEntity {
         return craftingService.hasCraftingRecipe(requirement);
     }
 
+    boolean hasEnoughToolDurability(Player player, GreenPrintNode node, GreenPrintIngredientGroup group) {
+        return craftingService.hasEnoughToolDurability(player, node, group);
+    }
+
     GreenPrintNode recipeNodeAt(Vec3 hit) {
         GreenPrintGraph graph = graph();
         return nodeAtSection(graph, sectionIndexAt(hit, graph));

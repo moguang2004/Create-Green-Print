@@ -53,7 +53,7 @@ public final class GreenPrintRequirementOverlay {
             return;
         }
 
-        List<Requirement> requirements = requirementsFor(node, minecraft.player);
+        List<Requirement> requirements = requirementsFor(greenPrint, node, minecraft.player);
         if (requirements.isEmpty()) {
             clearRenderState();
             return;
@@ -82,6 +82,9 @@ public final class GreenPrintRequirementOverlay {
     private static ChatFormatting missingCountColor(GreenPrintEntity greenPrint,
                                                     net.minecraft.world.entity.player.Player player,
                                                     Requirement requirement) {
+        if (requirement.durabilityInsufficient()) {
+            return ChatFormatting.RED;
+        }
         if (requirement.directlyAvailable()) {
             return null;
         }
@@ -110,7 +113,8 @@ public final class GreenPrintRequirementOverlay {
      * Green Print keeps the real Ingredient, so allocate a copy of the inventory against
      * those ingredients to preserve tag alternatives and avoid counting one stack twice.
      */
-    private static List<Requirement> requirementsFor(GreenPrintNode node, net.minecraft.world.entity.player.Player player) {
+    private static List<Requirement> requirementsFor(GreenPrintEntity greenPrint, GreenPrintNode node,
+                                                     net.minecraft.world.entity.player.Player player) {
         List<GreenPrintIngredientGroup> groups = node.ingredientGroups();
         List<ItemStack> available = new ArrayList<>(player.getInventory().getContainerSize());
         for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
@@ -143,8 +147,10 @@ public final class GreenPrintRequirementOverlay {
         List<Requirement> requirements = new ArrayList<>(groups.size());
         for (int index = 0; index < groups.size(); index++) {
             GreenPrintIngredientGroup group = groups.get(index);
+            boolean durabilityInsufficient = directlyAvailable[index]
+                    && !greenPrint.hasEnoughToolDurability(player, node, group);
             requirements.add(new Requirement(group.ingredient(), displayStack(group.ingredient(), player), group.count(),
-                    directlyAvailable[index]));
+                    directlyAvailable[index] && !durabilityInsufficient, durabilityInsufficient));
         }
         return requirements;
     }
@@ -194,6 +200,7 @@ public final class GreenPrintRequirementOverlay {
         }
     }
 
-    private record Requirement(Ingredient ingredient, ItemStack display, int count, boolean directlyAvailable) {
+    private record Requirement(Ingredient ingredient, ItemStack display, int count, boolean directlyAvailable,
+                               boolean durabilityInsufficient) {
     }
 }

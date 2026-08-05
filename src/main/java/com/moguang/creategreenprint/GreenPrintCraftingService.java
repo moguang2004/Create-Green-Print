@@ -133,6 +133,64 @@ final class GreenPrintCraftingService {
                 && !connectedRecipeIndex().candidatesFor(requested).isEmpty();
     }
 
+    /**
+     * Checks tool slots using the same crafting remainder that the real transaction consumes.
+     * Exact final durability is valid; an already broken tool or a tool that cannot survive the
+     * recipe is not.
+     */
+    boolean hasEnoughToolDurability(Player player, GreenPrintNode node, GreenPrintIngredientGroup group) {
+        if (player == null || node == null || group == null) {
+            return false;
+        }
+
+        RecipeSearchIndex recipes = connectedRecipeIndex();
+        Set<Integer> nonConsumingSlots = nonConsumingIngredientSlots(new RecipeRef(owner, node), recipes);
+        List<Integer> toolSlots = group.slots().stream()
+                .filter(nonConsumingSlots::contains)
+                .toList();
+        if (toolSlots.isEmpty()) {
+            return true;
+        }
+
+        List<ItemStack> sampleGrid = representativeInputGrid(node);
+        if (sampleGrid == null) {
+            return true;
+        }
+
+        int[] allocatedInventory = new int[player.getInventory().getContainerSize()];
+        for (int slot : toolSlots) {
+            ItemStack tool = ItemStack.EMPTY;
+            for (int inventorySlot = 0; inventorySlot < allocatedInventory.length; inventorySlot++) {
+                ItemStack candidate = player.getInventory().getItem(inventorySlot);
+                if (allocatedInventory[inventorySlot] < candidate.getCount()
+                        && group.ingredient().test(candidate)) {
+                    allocatedInventory[inventorySlot]++;
+                    tool = candidate.copyWithCount(1);
+                    break;
+                }
+            }
+            if (tool.isEmpty()) {
+                return false;
+            }
+            sampleGrid.set(slot, tool);
+        }
+
+        CraftingInput input = CraftingInput.of(3, 3, sampleGrid);
+        CraftingRecipe recipe = matchingCraftingRecipe(node, input, recipes);
+        if (recipe == null) {
+            return true;
+        }
+
+        List<ItemStack> remainders = recipe.getRemainingItems(input);
+        for (int slot : toolSlots) {
+            ItemStack supplied = input.getItem(slot);
+            if (!hasEnoughToolDurability(recipe, input, slot, supplied, remainders.get(slot))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private CraftTransaction resolveRecipe(Player player, RecipeRef recipe, RecipeSearchIndex recipes,
                                            CraftTransaction transaction, Set<String> activeRecipes,
                                            int groupIndex, List<ConsumedInput> consumedInputs,
@@ -278,6 +336,9 @@ final class GreenPrintCraftingService {
                     ItemStack remainder = remainders.get(slot);
                     if (nonConsumingSlots.contains(slot)) {
                         if (supplied.inventorySlot() >= 0) {
+                            if (!hasEnoughToolDurability(recipe, input, slot, input.getItem(slot), remainder)) {
+                                return null;
+                            }
                             transaction.updateReusableInput(supplied.inventorySlot(), remainder);
                         }
                     } else if (!remainder.isEmpty()) {
@@ -411,6 +472,43 @@ final class GreenPrintCraftingService {
     private static boolean isDurabilityRemainder(ItemStack supplied, ItemStack remainder) {
         return supplied.isDamageableItem() && !remainder.isEmpty()
                 && supplied.getItem() == remainder.getItem();
+    }
+
+    private static boolean hasEnoughToolDurability(CraftingRecipe recipe, CraftingInput input,
+                                                   int slot, ItemStack supplied, ItemStack remainder) {
+        if (!supplied.isDamageableItem()) {
+            return true;
+        }
+
+        int remainingDurability = supplied.getMaxDamage() - supplied.getDamageValue();
+        if (remainingDurability <= 0) {
+            return false;
+        }
+        if (!remainder.isEmpty()) {
+            if (remainder.getItem() != supplied.getItem() || !remainder.isDamageableItem()) {
+                return true;
+            }
+            int damageCost = remainder.getDamageValue() - supplied.getDamageValue();
+            return damageCost <= remainingDurability;
+        }
+
+        // A broken remainder can mean either a final durability use or a recipe that consumes
+        // more durability at once. Probe with a fresh tool to distinguish those cases.
+        List<ItemStack> probeGrid = new ArrayList<>(9);
+        for (int probeSlot = 0; probeSlot < 9; probeSlot++) {
+            probeGrid.add(input.getItem(probeSlot).copy());
+        }
+        ItemStack freshTool = supplied.copyWithCount(1);
+        freshTool.setDamageValue(0);
+        probeGrid.set(slot, freshTool);
+        ItemStack probeRemainder = recipe.getRemainingItems(CraftingInput.of(3, 3, probeGrid)).get(slot);
+        if (probeRemainder.isEmpty()) {
+            return remainingDurability >= supplied.getMaxDamage();
+        }
+        if (probeRemainder.getItem() != supplied.getItem() || !probeRemainder.isDamageableItem()) {
+            return true;
+        }
+        return probeRemainder.getDamageValue() <= remainingDurability;
     }
 
     private RecipeSearchIndex connectedRecipeIndex() {
@@ -598,12 +696,17 @@ final class GreenPrintCraftingService {
                 for (int inventorySlot = 0; inventorySlot < borrowedInventory.length; inventorySlot++) {
                     ItemStack inventoryStack = player.getInventory().getItem(inventorySlot);
                     ItemStack stack = reusableInventory.getOrDefault(inventorySlot, inventoryStack);
-                    if (inventoryStack.getCount() > reservedInventory[inventorySlot] + borrowedInventory[inventorySlot]
-                            && ingredient.test(stack)) {
-                        borrowedInventory[inventorySlot]++;
-                        borrowed.add(new ConsumedInput(stack.copyWithCount(1), inventorySlot, recipeSlot));
-                        break;
+                    if (!ingredient.test(stack)) {
+                        continue;
                     }
+                    if (!reusableInventory.containsKey(inventorySlot)
+                            && inventoryStack.getCount() <= reservedInventory[inventorySlot]
+                            + borrowedInventory[inventorySlot]) {
+                        continue;
+                    }
+                    borrowedInventory[inventorySlot]++;
+                    borrowed.add(new ConsumedInput(stack.copyWithCount(1), inventorySlot, recipeSlot));
+                    break;
                 }
             }
             return borrowed;
@@ -682,7 +785,11 @@ final class GreenPrintCraftingService {
                     continue;
                 }
                 if (reusable.isEmpty()) {
+                    boolean damageable = current.isDamageableItem();
                     current.shrink(1);
+                    if (current.isEmpty() && damageable) {
+                        breakTool(player);
+                    }
                 } else if (!ItemStack.isSameItemSameComponents(current, reusable)) {
                     ItemStack untouched = current.copy();
                     untouched.shrink(1);
@@ -698,6 +805,12 @@ final class GreenPrintCraftingService {
                     player.getInventory().placeItemBackInInventory(stack.copy());
                 }
             }
+        }
+
+        private void breakTool(Player player) {
+            player.level().playSound(null, player.getX(), player.getY(), player.getZ(),
+                    net.minecraft.sounds.SoundEvents.ITEM_BREAK, net.minecraft.sounds.SoundSource.PLAYERS, 0.8F,
+                    0.8F + player.level().getRandom().nextFloat() * 0.4F);
         }
     }
 }
