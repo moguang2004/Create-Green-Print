@@ -157,6 +157,13 @@ configurations {
     runtimeClasspath.extendsFrom localRuntime
 }
 
+// Create publishes Ponder with an open-ended version range. Pin it so Gradle does not
+// need to query Maven metadata just to resolve the test classpath.
+configurations.configureEach {
+    resolutionStrategy.force("net.createmod.ponder:ponder-neoforge:${ponder_version}")
+    resolutionStrategy.force("dev.engine-room.flywheel:flywheel-neoforge-1.21.1:${flywheel_version}")
+}
+
 dependencies {
     // Create is the host mod for Green Prints.
     implementation("com.simibubi.create:create-${minecraft_version}:${create_version}") {
@@ -174,7 +181,7 @@ dependencies {
     // Create bundles these at runtime, but their client APIs are needed to compile
     // the Green Print partial models and renderer.
     compileOnly("dev.engine-room.flywheel:flywheel-neoforge-api-1.21.1:1.0.6")
-    compileOnly("net.createmod.ponder:ponder-neoforge:1.0.82+mc1.21.1")
+    compileOnly("net.createmod.ponder:ponder-neoforge:${ponder_version}")
 
     // Example mod dependency using a mod jar from ./libs with a flat dir repository
     // This maps to ./libs/coolmod-${mc_version}-${coolmod_version}.jar
