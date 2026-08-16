@@ -760,6 +760,10 @@ public class GreenPrintEntity extends BlueprintEntity {
         return craftingService.hasCraftingRecipe(requirement);
     }
 
+    boolean hasValidRecipe(GreenPrintNode node) {
+        return craftingService.hasValidRecipe(node);
+    }
+
     boolean hasEnoughToolDurability(Player player, GreenPrintNode node, GreenPrintIngredientGroup group) {
         return craftingService.hasEnoughToolDurability(player, node, group);
     }

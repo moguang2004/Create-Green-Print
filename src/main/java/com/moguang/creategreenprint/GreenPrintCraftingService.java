@@ -148,6 +148,18 @@ final class GreenPrintCraftingService {
                 && !connectedRecipeIndex().candidatesFor(requested).isEmpty();
     }
 
+    /** Returns whether the node's stored grid matches a real crafting recipe and output. */
+    boolean hasValidRecipe(GreenPrintNode node) {
+        if (node == null || node.output().isEmpty() || owner.level() == null) {
+            return false;
+        }
+        List<ItemStack> sampleGrid = representativeInputGrid(node);
+        if (sampleGrid == null) {
+            return false;
+        }
+        return matchingCraftingRecipe(node, craftingContainer(sampleGrid), connectedRecipeIndex()) != null;
+    }
+
     /**
      * Checks the tool slots of one Green Print recipe using the same crafting remainder that
      * the real transaction consumes. Exact final durability is valid; an already broken tool
@@ -368,13 +380,8 @@ final class GreenPrintCraftingService {
             }
         }
 
-        // A manually edited section may no longer match its stored recipe.
-        for (ConsumedInput consumedInput : consumedInputs) {
-            if (consumedInput.stack().hasCraftingRemainingItem()) {
-                transaction.produce(consumedInput.stack().getCraftingRemainingItem());
-            }
-        }
-        return transaction;
+        // A section that no longer matches a real crafting recipe must not be craftable.
+        return null;
     }
 
     private Set<Integer> nonConsumingIngredientSlots(RecipeRef recipeRef, RecipeSearchIndex recipes) {

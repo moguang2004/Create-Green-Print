@@ -80,7 +80,8 @@ public final class GreenPrintRequirementOverlay {
             return;
         }
 
-        boolean resultCraftable = requirements.stream().allMatch(Requirement::directlyAvailable);
+        boolean validRecipe = target.entity().hasValidRecipe(node);
+        boolean resultCraftable = validRecipe && requirements.stream().allMatch(Requirement::directlyAvailable);
         int width = 21 * requirements.size() + 21 + 30;
         int x = (screenWidth - width) / 2;
         int y = screenHeight - 100;
@@ -101,7 +102,7 @@ public final class GreenPrintRequirementOverlay {
         x += 25;
 
         ItemStack output = node.output();
-        if (output.isEmpty()) {
+        if (output.isEmpty() || !validRecipe) {
             AllGuiTextures.HOTSLOT.render(graphics, x, y);
             GuiGameElement.of(Items.BARRIER).at(x + 3, y + 3).render(graphics);
         } else {
