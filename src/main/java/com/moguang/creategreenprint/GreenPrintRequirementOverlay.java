@@ -21,6 +21,7 @@ import net.minecraft.world.phys.EntityHitResult;
 /** Supplies Green Print data to Create's own blueprint overlay renderer. */
 public final class GreenPrintRequirementOverlay {
     private static final Field INGREDIENTS_FIELD = overlayField("ingredients");
+    private static final Field RESULTS_FIELD = overlayField("results");
     private static final Map<Ingredient, Map<Integer, Boolean>> RECURSIVE_REQUIREMENTS = new IdentityHashMap<>();
     private static final Map<Ingredient, Boolean> PRODUCER_RECIPES = new IdentityHashMap<>();
     private static final Map<ItemStack, ChatFormatting> MISSING_COUNT_COLORS = new IdentityHashMap<>();
@@ -57,6 +58,10 @@ public final class GreenPrintRequirementOverlay {
         if (requirements.isEmpty()) {
             clearRenderState();
             return;
+        }
+
+        if (!greenPrint.hasValidRecipe(node)) {
+            clearOverlayResults();
         }
 
         long gameTime = minecraft.level == null ? 0 : minecraft.level.getGameTime();
@@ -168,6 +173,20 @@ public final class GreenPrintRequirementOverlay {
 
     private static void replaceOverlayIngredients(List<Pair<ItemStack, Boolean>> ingredients) {
         ingredients.clear();
+    }
+
+    /** Hides the result stack so Create's overlay shows the barrier for an invalid recipe. */
+    private static void clearOverlayResults() {
+        if (RESULTS_FIELD == null) {
+            return;
+        }
+        try {
+            Object results = RESULTS_FIELD.get(null);
+            if (results instanceof List<?> resultsList) {
+                resultsList.clear();
+            }
+        } catch (IllegalAccessException ignored) {
+        }
     }
 
     @SuppressWarnings("unchecked")
